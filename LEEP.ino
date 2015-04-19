@@ -12,18 +12,17 @@
 #define NUM_BUTTONS      NUM_ROWS * NUM_COLS    // 16 buttons
 
 #define SERIAL9600
-#include "settings.h"
 
 
 
-// The input wires for the rows and columns of the grid. Top row is green wire pin 5,
-// left column is brown striped wire pin 9.
+// The input wires for the rows and columns of the grid. Top row is purple striped wire pin 12,
+// left column is brown wire pin 8.
 byte rowToPinNumber[NUM_ROWS] = {12, 11, 10, 9};
-byte minRowPinNumber = 2;
-byte maxRowPinNumber = 5;
-byte colToPinNumbers[NUM_COLS] = {7, 6, 5, 4}; 
-byte minColPinNumber = 6;
-byte maxColPinNumber = 9;
+byte minRowPinNumber = 9;
+byte maxRowPinNumber = 12;
+byte colToPinNumbers[NUM_COLS] = {8, 7, 6, 5}; 
+byte minColPinNumber = 5;
+byte maxColPinNumber = 8;
 
 
 
