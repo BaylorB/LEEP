@@ -8,6 +8,8 @@
 
 #define SERIAL9600
 
+//#define DEBUG 1
+
 // The input wires for the rows and columns of the grid. Top row is purple striped wire pin 12,
 // left column is brown wire pin 8.
 byte rowToPinNumber[NUM_ROWS] = {9, 10, 11, 12};
@@ -21,6 +23,7 @@ typedef struct
 {
   boolean pressed;
   boolean highlight;
+  boolean handled;
 } Button;
 Button buttons [NUM_ROWS][NUM_COLS];
 
@@ -36,19 +39,24 @@ uint32_t ledHighlightColor = 255;
 uint32_t ledHighlightOnColor = 255;
 
 
-// since we zig zag the Neopixel strip, test if this is an even or odd row
-// and return the strip index that corresponds to the button index
 int colRowToNeopixelIndex(int col, int row)
 {
-  // If it's the first or every other row, just use a row-major index.
-  if(row % 2 == 0)
-  {
-    return (row * NUM_COLS) + col;
-  }
+#ifdef DEBUG
+  Serial.print("colRowToNeopixelIndex ");
+  Serial.print(col);
+  Serial.print(" ");
+  Serial.print(row);
+#endif
+ 
+  int index = 0;
+  index = row + ((NUM_COLS-1 - col) * NUM_ROWS);
   
-  // Otherwise we're on a row that is backwards.
-  int flippedCol = NUM_COLS-1 - col; 
-  return (row * NUM_COLS) + flippedCol;
+#ifdef DEBUG
+  Serial.print(" - index ");
+  Serial.println(index);
+#endif
+
+  return index;
 }
 
 
@@ -67,7 +75,7 @@ void setup()
     Serial.print(colToPinNumber[col]);
     Serial.println(" set as output");
 #endif
-}
+  }
 
   // set Digital Pins 5-8 (IC Pins 11-14) as INPUTS pulled high
   for(int row = 0; row < NUM_ROWS; row++)
@@ -91,6 +99,7 @@ void setup()
     {
       buttons[row][col].pressed = false;
       buttons[row][col].highlight = false;
+      buttons[row][col].handled = false;
     }
   }
   
@@ -133,11 +142,11 @@ void loop()
       // "Read" the voltage present on the pin (check switch)
       int switchData = digitalRead(rowToPinNumber[row]);
 
-      // Update button pressed state. We're pressed if switchData is > 0.
-      buttons[row][col].pressed = (switchData > 0);
+      // Update button pressed state. We're pressed if switchData is 0.
+      buttons[row][col].pressed = (switchData == 0);
       
 #ifdef DEBUG
-      if(switchData > 0)
+      if(switchData == 0)
       {
         Serial.print("Pressing col row ");
         Serial.print(col);
@@ -170,12 +179,22 @@ void loop()
       
       if(buttons[row][col].pressed)
       {
-        // toggle highlight state.
-        buttons[row][col].highlight = !buttons[row][col].highlight;
+        // We're being pressed, have we handled this press yet? If not
+        if(!buttons[row][col].handled)
+        {
+          // toggle highlight state.
+          buttons[row][col].highlight = !buttons[row][col].highlight;
+          
+          // Set our handled flag so we don't toggle again this press.
+          buttons[row][col].handled = true;
+        }
         color = ledHighlightOnColor;
       }
       else
       {
+        // Clear handled flag since we're not being pressed any more.
+        buttons[row][col].handled = false;
+
         if(buttons[row][col].highlight) 
         {
           color = ledHighlightColor;
@@ -191,7 +210,6 @@ void loop()
     }
   }
   strip.show();
-
 }
 
 
