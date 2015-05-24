@@ -105,10 +105,10 @@ void setup()
   
 
   // Initialize NeoPixel colors
-  ledColor = strip.Color(0, 255, 0); // green
+  ledColor = strip.Color(0, 255, 0); // not used
   ledColorNone = strip.Color(0, 0, 0);
-  ledHighlightColor = strip.Color(23, 114, 255);
-  ledHighlightOnColor = strip.Color(10, 255, 79);
+  ledHighlightColor = strip.Color(23, 114, 255);  // Green //
+  ledHighlightOnColor = strip.Color(10, 255, 79); // blue // 
 
   // Initialize NeoPixels
   strip.begin();
@@ -155,7 +155,7 @@ void loop()
       }
 #endif
       
-      delay(20);  
+      delay(5);  //button reaction delay//
     }
     
     // raise column back HIGH
