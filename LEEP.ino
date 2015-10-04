@@ -322,22 +322,85 @@ public:
     setupRandomBoard();
   }
 
-  void setupRandomBoard()
+  void loop()
   {
-    g_leds.beginUpdate();
+    // Update our lights.
     for (uint8_t row = 0; row < NUM_ROWS; row++)
     {
-      m_litLeds[row] = 0;
       for (uint8_t col = 0; col < NUM_COLS; col++)
       {
-        // choose a random color from the cycle
-        bool bOn = random(2);
-        m_litLeds[row] |= (bOn << col);
-        uint32_t color = bOn ? LIGHT_BLUE : COLOR_NONE;
-        g_leds.setPixelColor(row, col, color);
+        if (g_buttons.isButtonOn(row,col))
+        {
+          pressButton(row,col);
+        }
       }
     }
-    g_leds.endUpdate();
+
+    // we've handled these buttons, so clear them.
+    g_buttons.reset();
+    
+    updateDisplay();
+    
+    // check for lights
+    for (uint8_t row = 0; row < NUM_ROWS; row++)
+    {
+      // if any lights are on
+      if (m_litLeds[row])
+      {
+        // just return
+        return;
+      }
+    }
+
+    // If we get here, all the lights are out, so celebrate
+    delay(500);
+    lightDance();
+    lightDance();
+    delay(500);
+
+    // And start again
+    setupRandomBoard();
+  }
+private:
+
+  void pressButton(uint8_t row, uint8_t col)
+  {
+    if (row > 0)
+    {
+      bitToggle(m_litLeds[row - 1], col);
+    }
+    if (row < NUM_ROWS - 1)
+    {
+      bitToggle(m_litLeds[row + 1], col);
+    }
+    if (col > 0)
+    {
+      bitToggle(m_litLeds[row], col - 1);
+    }
+    if (col < NUM_COLS - 1)
+    {
+      bitToggle(m_litLeds[row], col + 1);
+    }
+    bitToggle(m_litLeds[row], col);
+  }
+
+  void setupRandomBoard()
+  {
+    // make sure the board is blank
+    memset(m_litLeds, 0, sizeof(m_litLeds));
+    for (uint8_t row = 0; row < NUM_ROWS; row++)
+    {
+      for (uint8_t col = 0; col < NUM_COLS; col++)
+      {
+        // choose a random value to decide whether to push the button or not.
+        bool bOn = random(2);
+        if (bOn)
+        {
+          pressButton(row, col);
+        }
+      }
+    }
+    updateDisplay();
   }
 
   void updateDisplay()
@@ -379,61 +442,7 @@ public:
     }
   }
   
-  void loop()
-  {
-    // Update our lights.
-    for (uint8_t row = 0; row < NUM_ROWS; row++)
-    {
-      for (uint8_t col = 0; col < NUM_COLS; col++)
-      {
-        if (g_buttons.isButtonOn(row,col))
-        {
-          if (row > 0)
-          {
-            bitToggle(m_litLeds[row - 1], col);
-          }
-          if (row < NUM_ROWS - 1)
-          {
-            bitToggle(m_litLeds[row + 1], col);
-          }
-          if (col > 0)
-          {
-            bitToggle(m_litLeds[row], col - 1);
-          }
-          if (col < NUM_COLS - 1)
-          {
-            bitToggle(m_litLeds[row], col + 1);
-          }
-          bitToggle(m_litLeds[row], col);
-        }
-      }
-    }
 
-    // we've handled these buttons, so clear them.
-    g_buttons.reset();
-    
-    updateDisplay();
-    
-    // check for lights
-    for (uint8_t row = 0; row < NUM_ROWS; row++)
-    {
-      // if any lights are on
-      if (m_litLeds[row])
-      {
-        // just return
-        return;
-      }
-    }
-
-    // If we get here, all the lights are out, so celebrate
-    delay(500);
-    lightDance();
-    lightDance();
-    delay(1000);
-
-    // And start again
-    setupRandomBoard();
-  }
 private:
   uint8_t m_litLeds[NUM_ROWS];
   
