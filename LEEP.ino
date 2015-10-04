@@ -344,18 +344,25 @@ public:
     // check for lights
     for (uint8_t row = 0; row < NUM_ROWS; row++)
     {
-      // if any lights are on
-      if (m_litLeds[row])
+      // if any lights are on, and all lights are not on
+      if (m_litLeds[row] && (m_litLeds[row] != (1 << NUM_COLS) - 1))
       {
         // just return
         return;
       }
     }
 
-    // If we get here, all the lights are out, so celebrate
+    // If we get here, all the lights are out or all lights are on, so celebrate
     delay(500);
-    lightDance();
-    lightDance();
+
+    if (m_litLeds[0]) {
+      // All lights are on, I think this should be an easteregg win condition, so do something fun
+      blueRainbow(2);
+    } else {
+      // Normal win condition
+      lightDance();
+      lightDance();
+    }
     delay(500);
 
     // And start again
@@ -441,7 +448,46 @@ private:
       delay(200);
     }
   }
+
+  void blueRainbow(uint8_t wait) {
+    uint8_t i = 0x72;
+    uint32_t color = LIGHT_BLUE;
+    // ramp up (lightBlue-blue)
+    do
+    {
+      color -= 1 << 8; // decrement green.
+      if ((color >> 16) * 5 > i)
+      {
+        // every five, decrement red as well (since that's the ratio of 0x17 to 0x72)
+        color -= 1 << 16;
+      }
+      g_leds.setAllPixels(color);
+    delay(1); // minimum delay on start, since this is just ramping the leds up.
+    } while (--i > 0);
   
+    // blue-green
+    do
+    {
+      color = (uint32_t)(255 - i) | (uint32_t)i << 8; // cycle blue - green.
+      g_leds.setAllPixels(color);
+      delay(wait);
+    } while (++i > 0);
+  
+    // green-red
+    do
+    {
+      color = (uint32_t)(255 - i) << 8 | (uint32_t)i << 16; // cycle green - red.
+      g_leds.setAllPixels(color);
+      delay(wait);
+    } while (++i > 0);
+  
+    // ramp down (red)
+    do
+    {
+      color = 255 - (uint32_t)i << 16; // fade down blue.
+      g_leds.setAllPixels(color);
+    } while (++i > 0);
+  }
 
 private:
   uint8_t m_litLeds[NUM_ROWS];
