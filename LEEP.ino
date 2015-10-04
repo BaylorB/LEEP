@@ -11,11 +11,15 @@
 
 #define COLOR_NONE      0x000000
 #define RED             0xFF0000
+#define RED_DIM         0x2F0000
 #define GREEN           0x00FF00
+#define GREEN_DIM       0x002F00
 #define BLUE            0x0000FF
+#define BLUE_DIM        0x00002F
 #define CYAN            0x00FFFF
 #define MAGENTA         0xFF00FF
-#define YELLOW          0xFFFF00
+#define YELLOW          0xC0FF00
+#define YELLOW_DIM      0x182000
 
 #define LIGHT_BLUE      0x1772FF
 #define LIGHT_GREEN     0x0AFF4F
@@ -493,42 +497,206 @@ private:
   uint8_t m_litLeds[NUM_ROWS];
   
 } g_lightsOut;
-//
-//class BoardTest
-//{
-//  void setup()
-//  {
-//    g_buttons.setNumStates(2);
-//  }
-//
-//  // Basic board test -- lights go on when the button is pressed and go off
-//  // when they are pressed again.
-//  void loop()
-//  {
-//    g_leds.beginUpdate();
-//    // Update our lights.
-//    for (uint8_t row = 0; row < NUM_ROWS; row++)
-//    {
-//      for (uint8_t col = 0; col < NUM_COLS; col++)
-//      {
-//        uint32_t color = COLOR_NONE;
-//        
-//        if (g_buttons.isButtonPressed(row,col))
-//        {
-//          color = MAGENTA;
-//        }
-//        else if (g_buttons.isButtonOn(row,col))
-//        {
-//          color = BLUE;
-//        }
-//  
-//        g_leds.setPixelColor(row, col, color);
-//      }
-//    }
-//    g_leds.endUpdate();
-//  }
-//} g_boardTest;
-//
+
+#define MAX_SIMON_SEQUENCE 4
+
+class Simon
+{
+public:
+  Simon()
+  {
+    
+  }
+  void setup()
+  {
+    randomSeed(micros());
+    g_buttons.setNumStates(2);
+
+    // make all the colors dance
+    lightDance(500);
+
+    delay(1000);
+
+    // clear any cruft
+    resetSequence();
+    
+    // now start the sequence
+    advanceAndShowSequence();
+  }
+
+  void showCurrentState()
+  {
+    uint8_t positionsToShowPressed = 0;
+    for (uint8_t row = 0; row < NUM_ROWS; row++)
+    {
+      for (uint8_t col = 0; col < NUM_COLS; col++)
+      {
+        uint8_t currPos = posFromRowCol(row,col);
+        if (g_buttons.isButtonPressed(row,col))
+        {
+          bitSet(positionsToShowPressed, currPos);
+        }
+      }
+    }
+    updatePressedStates(positionsToShowPressed);
+  }
+
+  void loop()
+  {
+    bool bButtonUpDetected = false, bPressIsCorrect;
+    uint8_t positionsToShowPressed = 0;
+    for (uint8_t row = 0; row < NUM_ROWS; row++)
+    {
+      for (uint8_t col = 0; col < NUM_COLS; col++)
+      {
+        uint8_t currPos = posFromRowCol(row,col);
+        if (g_buttons.isButtonPressed(row,col))
+        {
+          bitSet(positionsToShowPressed, currPos);
+        }
+        else if (!bButtonUpDetected && g_buttons.isButtonOn(row,col))
+        {
+          // Let's break on the first touch-up detected
+          bButtonUpDetected = true;
+          bPressIsCorrect = checkAndAdvance(currPos);
+        }
+      }
+    }
+
+    updatePressedStates(positionsToShowPressed);
+
+    if (bButtonUpDetected)
+    {
+      if (bPressIsCorrect)
+      {
+        if (sequenceComplete())
+        {
+          if (sequenceReachedMaxLength())
+          {
+//            showWin();
+            lightDance(300);
+            delay(1000);
+        
+            // clear any cruft
+            resetSequence();
+          }
+          else
+          {
+            delay(200);
+          }
+          
+          // now show the next item in the sequence
+          advanceAndShowSequence();
+        }
+      }
+      else
+      {
+        // show sad trombone
+        // give them another try?
+      }
+      
+      // we've handled these buttons, so clear them.
+      g_buttons.reset();
+    }
+  }
+
+private:
+
+  void lightDance(uint16_t wait)
+  {
+    // first, circle
+    updatePressedStates(0x1);
+    delay(wait);
+    updatePressedStates(0x2);
+    delay(wait);
+    updatePressedStates(0x8);
+    delay(wait);
+    updatePressedStates(0x4);
+    delay(wait);
+    // then alternate
+    for (uint8_t i = 0 ; i < 2 ; ++i)
+    {
+      updatePressedStates(0x9);
+      delay(wait);
+      updatePressedStates(0x6);
+      delay(wait);
+    }
+    // then flash
+    for (uint8_t i = 0 ; i < 2 ; ++i)
+    {
+      updatePressedStates(0xF);
+      delay(wait);
+      updatePressedStates(0x0);
+      delay(wait);
+    }
+
+    // leave it dim
+  }
+
+  void resetSequence()
+  {
+    m_nCurrentSequenceLength = 0;
+  }
+
+  void updatePressedStates(uint8_t pressedMap)
+  {
+    g_leds.beginUpdate();
+    for (uint8_t row = 0 ; row < NUM_ROWS ; ++row)
+    {
+      for (uint8_t col = 0 ; col < NUM_COLS ; ++col)
+      {
+        uint8_t currPos = posFromRowCol(row,col);
+        uint32_t color = bitRead(pressedMap, currPos) ? ms_colorsBright[currPos] : ms_colors[currPos];
+        g_leds.setPixelColor(row, col, color);
+      }
+    }
+    g_leds.endUpdate();
+  }
+  
+  void advanceAndShowSequence()
+  {
+    m_nCurrentSequencePosition = 0;
+    m_sequence[m_nCurrentSequenceLength++] = random(4);
+    for (uint8_t i = 0 ; i < m_nCurrentSequenceLength ; ++i)
+    {
+      uint8_t pos = (1 << m_sequence[i]);
+      updatePressedStates(pos);
+      delay(500);
+      setAllDim();
+      delay(200);
+    }
+  }
+
+  bool checkAndAdvance(uint8_t currPos)
+  {
+    bool bRet = false;
+    if (m_nCurrentSequencePosition < m_nCurrentSequenceLength)
+    {
+      bRet = m_sequence[m_nCurrentSequencePosition++] == currPos;
+    }
+    return bRet;
+  }
+  bool sequenceComplete() { return m_nCurrentSequencePosition == m_nCurrentSequenceLength; }
+  bool sequenceReachedMaxLength() { return m_nCurrentSequenceLength == MAX_SIMON_SEQUENCE; }
+  
+  uint8_t posFromRowCol(uint8_t row, uint8_t col)
+  {
+    return row & 0x2 | col >> 1;
+  }
+  void setAllDim()
+  {
+    updatePressedStates(0x0);
+  }
+private:
+  uint8_t m_sequence[MAX_SIMON_SEQUENCE];
+  uint8_t m_nCurrentSequenceLength, m_nCurrentSequencePosition;
+  static const uint32_t ms_colors[];
+  static const uint32_t ms_colorsBright[];
+} g_simon;
+
+const uint32_t Simon::ms_colors[] = {RED_DIM, BLUE_DIM, YELLOW_DIM, GREEN_DIM};
+const uint32_t Simon::ms_colorsBright[] = {RED, BLUE, YELLOW, GREEN};
+
 enum Mode
 {
   MODE_BOARD_TEST,
@@ -563,8 +731,8 @@ void loop()
       g_drawing.loop();
       break;
     case MODE_SIMON_SAYS:
-      ++g_mode;
-      // fall through -- NYI
+      g_simon.loop();
+      break;
     case MODE_LIGHTS_OUT:
       g_lightsOut.loop();
       break;
@@ -594,8 +762,8 @@ void loop()
         g_drawing.setup();
         break;
       case MODE_SIMON_SAYS:
-        ++g_mode;
-        // fall through -- NYI
+        g_simon.setup();
+        break;
       case MODE_LIGHTS_OUT:
         g_lightsOut.setup();
         break;
