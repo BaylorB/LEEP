@@ -234,6 +234,8 @@ void setup()
   rainbow(2);
   // light LED to show we've booted.
   digitalWrite(ledPin, HIGH);
+
+  modeSpecificSetup();
 }
 
 // Basic board test -- lights go on when the button is pressed and go off
@@ -498,7 +500,7 @@ private:
   
 } g_lightsOut;
 
-#define MAX_SIMON_SEQUENCE 4
+#define MAX_SIMON_SEQUENCE 16
 
 class Simon
 {
@@ -591,8 +593,16 @@ public:
       }
       else
       {
+        // it feels wierd to not see a silent board before the
+        // sad trombone
+        delay(200);
         // show sad trombone
+        g_leds.setAllPixels(RED);
+        delay(500);
         // give them another try?
+        resetAttempt();
+        // show them the correct sequence again.
+        showCurrentSequence();
       }
       
       // we've handled these buttons, so clear them.
@@ -627,7 +637,7 @@ private:
       updatePressedStates(0xF);
       delay(wait);
       updatePressedStates(0x0);
-      delay(wait);
+      delay(wait/2); // wait less time for the dim
     }
 
     // leave it dim
@@ -636,6 +646,11 @@ private:
   void resetSequence()
   {
     m_nCurrentSequenceLength = 0;
+  }
+
+  void resetAttempt()
+  {
+    m_nCurrentSequencePosition = 0;
   }
 
   void updatePressedStates(uint8_t pressedMap)
@@ -657,6 +672,11 @@ private:
   {
     m_nCurrentSequencePosition = 0;
     m_sequence[m_nCurrentSequenceLength++] = random(4);
+    showCurrentSequence();
+  }
+
+  void showCurrentSequence()
+  {
     for (uint8_t i = 0 ; i < m_nCurrentSequenceLength ; ++i)
     {
       uint8_t pos = (1 << m_sequence[i]);
@@ -699,9 +719,9 @@ const uint32_t Simon::ms_colorsBright[] = {RED, BLUE, YELLOW, GREEN};
 
 enum Mode
 {
+  MODE_SIMON_SAYS,
   MODE_BOARD_TEST,
   MODE_DRAWING,
-  MODE_SIMON_SAYS,
   MODE_LIGHTS_OUT,
   NUM_MODES
 };
@@ -753,30 +773,34 @@ void loop()
         g_mode = 0; // using 0 instead of the name, since this is easier if the order changes
       }
 
-      switch(g_mode)
-      {
-      case MODE_BOARD_TEST:
-        g_boardTest.setup();
-        break;
-      case MODE_DRAWING:
-        g_drawing.setup();
-        break;
-      case MODE_SIMON_SAYS:
-        g_simon.setup();
-        break;
-      case MODE_LIGHTS_OUT:
-        g_lightsOut.setup();
-        break;
-      default:
-        // shouldn't get here, but should do something reasonable if we do
-        g_mode = MODE_BOARD_TEST;
-        g_boardTest.setup();
-        break;
-      }
+      modeSpecificSetup();
     }
   }
 }
 
+void modeSpecificSetup()
+{
+  switch(g_mode)
+  {
+  case MODE_BOARD_TEST:
+    g_boardTest.setup();
+    break;
+  case MODE_DRAWING:
+    g_drawing.setup();
+    break;
+  case MODE_SIMON_SAYS:
+    g_simon.setup();
+    break;
+  case MODE_LIGHTS_OUT:
+    g_lightsOut.setup();
+    break;
+  default:
+    // shouldn't get here, but should do something reasonable if we do
+    g_mode = MODE_BOARD_TEST;
+    g_boardTest.setup();
+    break;
+  }
+}
 
 //
 //uint32_t Wheel(byte WheelPos) {
