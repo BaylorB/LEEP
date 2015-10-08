@@ -238,9 +238,42 @@ void setup()
   modeSpecificSetup();
 }
 
+class Game
+{
+public:
+  virtual ~Game()
+  {/*empty destructor*/}
+
+  // All games need to setup the button controller
+  // and initialize the LEDs. I suppose I could write
+  // a super simple one here, but I don't think that
+  // any two games yet have the same setup flow, so
+  // not really worth it.
+  virtual void setup() = 0;
+  // It's not a game unless you can interact with it,
+  // so we should do something on user input.
+  // Note that while this is running, inputs are ignored.
+  // This can be quite useful and simplify interactions
+  // but it's worth bearing in mind, in case you want your
+  // interaction response to be interruptable
+  virtual void inputsChanged() = 0;
+  // loop is where we do things that happen in reponse to no user
+  // stimulous. Primarily, I expect that this will be where you
+  // trigger interactions in response to timers and the like.
+  // For now, there is no external timer interface, so you have
+  // to manage this yourself. In a more fully baked implementation,
+  // I could imagine that this would be a service of the 'OS'.
+  virtual void loop()
+  {
+    // it's fairly likely that we only want to do something on
+    // input changes, so we can create a default implementation
+    // of loop that is empty.
+  }
+};
+
 // Basic board test -- lights go on when the button is pressed and go off
 // when they are pressed again.
-class BoardTest
+class BoardTest : public Game
 {
 public:
   void setup()
@@ -249,7 +282,7 @@ public:
     g_leds.setAllPixels(COLOR_NONE);
   }
 
-  void loop()
+  void inputsChanged()
   {
     g_leds.beginUpdate();
     // Update our lights.
@@ -275,12 +308,12 @@ public:
   }
 } g_boardTest;
 
-class Drawing
+class Drawing : public Game
 {
 public:
   void setup();
 
-  void loop()
+  void inputsChanged()
   {
     g_leds.beginUpdate();
     // Update our lights.
@@ -307,9 +340,278 @@ void Drawing::setup()
   g_leds.setAllPixels(COLOR_NONE);
 }
 
+#define SNAKE_LENGTH          4
+#define SNAKE_TRAVEL          16
+#define SNAKE_TRAVEL_TIME_MS  4000
+#define TIME_TILL_HINT_MS     15000
+#define SNAKE_MOVE_DELAY_MS   (SNAKE_TRAVEL_TIME_MS/SNAKE_TRAVEL)
+
+#define SNAKE_PEEK_COLOR      LIGHT_GREEN
+#define SNAKE_COLOR           LIGHT_GREEN
+#define SNAKE_WRONG_COLOR     YELLOW
+
+class Snake : public Game
+{
+public:
+  void setup()
+  {
+    randomSeed(micros());
+    g_buttons.setNumStates(2);
+    g_leds.setAllPixels(COLOR_NONE);
+    m_nSnakePos = random(16);
+    int_blinkSnakeHole(3, 500);
+    int_runSnake();
+    m_nLastTouched = millis();
+  }
+
+  void inputsChanged()
+  {
+    g_leds.beginUpdate();
+    // Update our lights.
+    const uint8_t target_row = int_rowForPos(m_nSnakePos);
+    const uint8_t target_col = int_colForPos(m_nSnakePos);
+    bool buttonOn = false;
+    for (uint8_t row = 0; row < NUM_ROWS; row++)
+    {
+      for (uint8_t col = 0; col < NUM_COLS; col++)
+      {
+        uint32_t color = COLOR_NONE;
+        if (g_buttons.isButtonPressed(row,col))
+        {
+          color = (row == target_row && col == target_col) ? SNAKE_PEEK_COLOR : SNAKE_WRONG_COLOR;
+        }
+        else if (g_buttons.isButtonOn(row, col))
+        {
+          buttonOn = true;
+        }
+        g_leds.setPixelColor(row, col, color);
+      }
+    }
+    g_leds.endUpdate();
+
+    // If we detect a button up.
+    if (buttonOn)
+    {
+      // If the correct button is held down, don't do anything
+      if (!g_buttons.isButtonPressed(target_row, target_col))
+      {
+        delay(150);
+        // if the right hole is chosen, run the snake
+        if (g_buttons.isButtonOn(target_row, target_col))
+        {
+          int_runSnake();
+        }
+        else
+        {
+          int_blinkSnakeHole(2,200); // show a hint if they're having problems.
+        }
+        g_buttons.reset();
+      }
+    }
+    m_nLastTouched = millis();
+  }
+
+  void loop()
+  {
+    if (millis() - m_nLastTouched > TIME_TILL_HINT_MS)
+    {
+      int_blinkSnakeHole(2,100); // show a hint if they're having problems.
+      m_nLastTouched = millis();
+    }
+  }
+
+private:
+  
+  void int_blinkSnakeHole(uint8_t nBlinkCycles, uint16_t nBlinkDuration)
+  {
+    const uint8_t row = m_nSnakePos >> 2;
+    const uint8_t col = m_nSnakePos & 0x03;
+    for (uint8_t i = 0 ; i < nBlinkCycles ; ++i)
+    {
+      g_leds.beginUpdate();
+      g_leds.setPixelColor(row, col, SNAKE_PEEK_COLOR);
+      g_leds.endUpdate();
+      delay(nBlinkDuration);
+      g_leds.beginUpdate();
+      g_leds.setPixelColor(row, col, COLOR_NONE);
+      g_leds.endUpdate();
+      delay(nBlinkDuration);
+    }
+  }
+
+  enum SnakeDirection
+  {
+    NORTH,
+    EAST,
+    SOUTH,
+    WEST
+  };
+
+  uint8_t int_rowForPos(uint8_t pos)
+  {
+      return pos / NUM_COLS;
+  }
+  uint8_t int_colForPos(uint8_t pos)
+  {
+      return pos % NUM_COLS;
+  }
+  void int_runSnake()
+  {
+    uint8_t anSnakeSegments[SNAKE_LENGTH];
+    uint8_t nSnakeDirection = random(4); // start in a random direction
+    uint8_t directionOptionsMap = 0x0F;
+    uint8_t nWritePos = 0;
+    const uint16_t wait = (SNAKE_TRAVEL_TIME_MS / SNAKE_TRAVEL);
+    for (uint8_t i = 0 ; i < SNAKE_TRAVEL; ++i)
+    {
+      const uint8_t row = int_rowForPos(m_nSnakePos);
+      const uint8_t col = int_colForPos(m_nSnakePos);
+
+      g_leds.beginUpdate();
+      // if we're eating our tail
+      if (i >= SNAKE_LENGTH)
+      {
+        const uint8_t old_row = int_rowForPos(anSnakeSegments[nWritePos]);
+        const uint8_t old_col = int_colForPos(anSnakeSegments[nWritePos]);
+        g_leds.setPixelColor(old_row, old_col, COLOR_NONE);
+      }
+      anSnakeSegments[nWritePos] = m_nSnakePos;
+      g_leds.setPixelColor(row, col, SNAKE_COLOR);
+      g_leds.endUpdate();
+
+      delay(wait);
+
+      // on all but the last pass, figure out the next position
+      if (i < SNAKE_TRAVEL - 1)
+      {
+        // collision detection:
+        // first, populate our list of posibilities.
+        uint8_t directionOptionsMap = 0x0F;
+        // now eliminate the impossible
+        if (row == 0)
+        {
+          // at the top, can't go north
+          bitClear(directionOptionsMap, NORTH);
+        }
+        else if (row == NUM_ROWS - 1)
+        {
+          // at the bottom, can't go south
+          bitClear(directionOptionsMap, SOUTH);
+        }
+  
+        if (col == 0)
+        {
+          // at the left edge, can't go west
+          bitClear(directionOptionsMap, WEST);
+        }
+        else if (col == NUM_COLS - 1)
+        {
+          // at the right edge, can't go east
+          bitClear(directionOptionsMap, EAST);
+        }
+  
+        const uint8_t nReadPos = i >= SNAKE_LENGTH ? (nWritePos + 1) % SNAKE_LENGTH : 0;
+        // now eliminate any directions that crash into the existing snake
+        uint8_t nNumPossibleDirections = 0;
+        for (uint8_t dir = 0 ; dir < 4 ; ++dir)
+        {
+          // if the direction is possible
+          if (bitRead(directionOptionsMap,dir))
+          {
+            ++nNumPossibleDirections;
+            uint8_t pos = int_posAdjustedByDirection(m_nSnakePos, (SnakeDirection)dir);
+  
+            // see if this pos is in the list
+            for (uint8_t check = nReadPos ; check != nWritePos ; )
+            {
+              if (anSnakeSegments[check] == pos)
+              {
+                bitClear(directionOptionsMap, dir);
+                // just kidding
+                --nNumPossibleDirections;
+                break;
+              }
+              ++check;
+              check %= SNAKE_LENGTH;
+            }
+          }
+        }
+        
+        if (nNumPossibleDirections > 0)
+        {
+          uint8_t choice = random(nNumPossibleDirections);
+          for (uint8_t dir = 0 ; dir < 4 ; ++dir)
+          {
+            // if the direction is possible
+            if (bitRead(directionOptionsMap,dir))
+            {
+              if (choice-- == 0)
+              {
+                m_nSnakePos = int_posAdjustedByDirection(m_nSnakePos, (SnakeDirection)dir);
+                break;
+              }
+            }
+          }
+        }
+        else
+        {
+          // if we've painted ourselves into a corner, then just don't move.
+          // This isn't possible with our starting values, but could be with a longer snake.
+        }
+      }
+      // wait to increment this until we've done the check to make the math easier.
+      ++nWritePos;
+      nWritePos %= SNAKE_LENGTH;
+    }
+
+    // REVIEW: right now, this will only support snake lengths shorter than path lengths
+    // If this is ever not the case, we need to add a delay loop here to eat some time,
+    // followed by a slight adjustment to the final loop.
+
+    // continue eating our tail
+    for (uint8_t i = 0 ; i < SNAKE_LENGTH ; ++i)
+    {
+      g_leds.beginUpdate();
+      const uint8_t old_row = int_rowForPos(anSnakeSegments[nWritePos]);
+      const uint8_t old_col = int_colForPos(anSnakeSegments[nWritePos]);
+      g_leds.setPixelColor(old_row, old_col, COLOR_NONE);
+      g_leds.endUpdate();
+
+      delay(wait);
+
+      ++nWritePos;
+      nWritePos %= SNAKE_LENGTH;
+    }
+  }
+
+  static uint8_t int_posAdjustedByDirection(uint8_t pos, SnakeDirection dir)
+  {
+    switch (dir)
+    {
+    case NORTH:
+      pos -= NUM_COLS;
+      break;
+    case EAST:
+      pos += 1;
+      break;
+    case SOUTH:
+      pos += NUM_COLS;
+      break;
+    case WEST:
+      pos -= 1;
+      break;
+    }
+    return pos;
+  }
+private:
+  uint8_t m_nSnakePos;
+  uint32_t m_nLastTouched;
+  
+} g_snake;
+
 #define bitToggle(value, bit_no) (bitWrite(value, bit_no, !bitRead(value, bit_no)))
 
-class LightsOut
+class LightsOut : public Game
 {
 public:
   LightsOut()
@@ -328,7 +630,7 @@ public:
     setupRandomBoard();
   }
 
-  void loop()
+  void inputsChanged()
   {
     // Update our lights.
     for (uint8_t row = 0; row < NUM_ROWS; row++)
@@ -502,7 +804,7 @@ private:
 
 #define MAX_SIMON_SEQUENCE 16
 
-class Simon
+class Simon : public Game
 {
 public:
   Simon()
@@ -543,7 +845,7 @@ public:
     updatePressedStates(positionsToShowPressed);
   }
 
-  void loop()
+  void inputsChanged()
   {
     bool bButtonUpDetected = false, bPressIsCorrect;
     uint8_t positionsToShowPressed = 0;
@@ -593,7 +895,7 @@ public:
       }
       else
       {
-        // it feels wierd to not see a silent board before the
+        // it feels weird to not see a silent board before the
         // sad trombone
         delay(200);
         // show sad trombone
@@ -719,10 +1021,11 @@ const uint32_t Simon::ms_colorsBright[] = {RED, BLUE, YELLOW, GREEN};
 
 enum Mode
 {
-  MODE_SIMON_SAYS,
   MODE_BOARD_TEST,
+  MODE_SNAKE,
   MODE_DRAWING,
   MODE_LIGHTS_OUT,
+  MODE_SIMON_SAYS,
   NUM_MODES
 };
 
@@ -742,26 +1045,7 @@ void loop()
   if (bButtonsChanged)
   {
     lastChange = millis();
-    switch(g_mode)
-    {
-    case MODE_BOARD_TEST:
-      g_boardTest.loop();
-      break;
-    case MODE_DRAWING:
-      g_drawing.loop();
-      break;
-    case MODE_SIMON_SAYS:
-      g_simon.loop();
-      break;
-    case MODE_LIGHTS_OUT:
-      g_lightsOut.loop();
-      break;
-    default:
-      // shouldn't get here, but should do something reasonable if we do
-      g_mode = MODE_BOARD_TEST;
-      g_boardTest.loop();
-      break;
-    }
+    currentGame().inputsChanged();
   } else if (g_buttons.isButtonPressed(0,0)) {
     int32_t now = millis();
     // If someone long-pressed the 0 button, switch to a new game
@@ -776,30 +1060,39 @@ void loop()
       modeSpecificSetup();
     }
   }
+  // always call the game's loop last, and call it regardless of whether
+  // we have just told them to setup or that the inputs have changed.
+  currentGame().loop();
 }
 
-void modeSpecificSetup()
+class Game &currentGame()
 {
   switch(g_mode)
   {
   case MODE_BOARD_TEST:
-    g_boardTest.setup();
-    break;
+    return g_boardTest;
   case MODE_DRAWING:
-    g_drawing.setup();
-    break;
+    return g_drawing;
+  case MODE_SNAKE:
+    return g_snake;
   case MODE_SIMON_SAYS:
-    g_simon.setup();
-    break;
+    return g_simon;
   case MODE_LIGHTS_OUT:
-    g_lightsOut.setup();
-    break;
-  default:
-    // shouldn't get here, but should do something reasonable if we do
-    g_mode = MODE_BOARD_TEST;
-    g_boardTest.setup();
-    break;
+    return g_lightsOut;
   }
+  // Create a defacto 'default' but leave it out of the switch,
+  // so that the compiler can warn us when we add a new enum
+  // value. I don't know if that's something that this compiler
+  // does, but it could :)
+
+  // shouldn't get here, but should do something reasonable if we do
+  g_mode = MODE_BOARD_TEST;
+  return g_boardTest;
+}
+
+void modeSpecificSetup()
+{
+  currentGame().setup();
 }
 
 //
